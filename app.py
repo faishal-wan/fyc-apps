@@ -19,7 +19,7 @@ if not os.path.exists("database"):
     os.makedirs("database")
 
 st.sidebar.title("FYC Tools")
-menu = st.sidebar.radio("Navigasi", ["Database Admin", "Generate Rapor"])
+menu = st.sidebar.radio("Navigasi", ["Database Admin", "Generate Rapor", "Segmentasi Creator"])
 
 # ==========================================
 # HALAMAN 1: DATABASE ADMIN
@@ -46,7 +46,6 @@ elif menu == "Generate Rapor":
         creator_file = st.file_uploader("Unggah file performa 1 Creator (Excel)", type=["xlsx"])
         
         if creator_file:
-            # 1. BUKA DATA & BERSIHKAN FORMAT TANGGAL AWAL
             df_creator = pd.read_excel(creator_file, sheet_name="Data")
             df_master = pd.read_csv("database/master_data.csv")
             
@@ -64,22 +63,18 @@ elif menu == "Generate Rapor":
                 max_value=max_date
             )
             
-            # Terapkan filter jika tanggal awal dan akhir sudah dipilih
             if len(date_filter) == 2:
                 start_dt, end_dt = date_filter
                 df_creator = df_creator[(df_creator['Post date'].dt.date >= start_dt) & (df_creator['Post date'].dt.date <= end_dt)]
             
-            # Jika data kosong setelah difilter
             if df_creator.empty:
                 st.warning("Tidak ada post pada rentang tanggal tersebut.")
             else:
-                # Pastikan angka terbaca benar
                 df_creator['Sales value'] = pd.to_numeric(df_creator['Sales value'], errors='coerce').fillna(0)
                 df_creator['Orders'] = pd.to_numeric(df_creator['Orders'], errors='coerce').fillna(0)
                 df_creator['Redemption amount'] = pd.to_numeric(df_creator['Redemption amount'], errors='coerce').fillna(0)
                 df_creator['Video views'] = pd.to_numeric(df_creator['Video views'], errors='coerce').fillna(0)
                 
-                # Pemetaan Industri
                 def map_industry(ind):
                     if pd.isna(ind): return 'Lainnya'
                     if ind == 'Dining': return 'Dining'
@@ -87,13 +82,11 @@ elif menu == "Generate Rapor":
                     else: return 'Lainnya'
                 df_creator['Industri Baru'] = df_creator['Location industry'].apply(map_industry)
                 
-                # 2. AMBIL PROFIL UMUM
                 c_id = df_creator['Creator ID'].iloc[0]
                 c_name = df_creator['Creator name'].iloc[0]
                 c_level = df_creator['Creator level'].iloc[0]
                 c_city = df_creator['Creator city'].iloc[0]
                 
-                # Ambil Collab Period & buang info jamnya
                 master_match = df_master[df_master['Unique ID'] == c_id]
                 if not master_match.empty:
                     start_str = str(master_match['Collaboration start time'].iloc[0]).split(',')[0]
@@ -102,7 +95,6 @@ elif menu == "Generate Rapor":
                 else:
                     collab_period = "Tidak ditemukan"
                 
-                # 3. FREKUENSI POSTING
                 total_post = len(df_creator)
                 rentang_hari = (df_creator['Post date'].max() - df_creator['Post date'].min()).days
                 rentang_hari = 1 if rentang_hari == 0 else rentang_hari
@@ -116,7 +108,6 @@ elif menu == "Generate Rapor":
                     
                 dominan = df_creator['Industri Baru'].value_counts().idxmax()
                 
-                # --- TAMPILAN HEADER PROFIL ---
                 st.subheader(f"{c_name} ({c_id})")
                 st.markdown(f"<p style='color:gray; font-size:14px; margin-top:-10px; margin-bottom:20px;'>Collaboration Period: {collab_period}</p>", unsafe_allow_html=True)
                 
@@ -128,7 +119,6 @@ elif menu == "Generate Rapor":
                 
                 st.divider()
 
-                # 4. POST WITH SALES
                 st.subheader("🛒 Performa Penjualan (Sales)")
                 post_with_sales = len(df_creator[df_creator['Sales value'] > 0])
                 persen_sales = (post_with_sales / total_post) * 100 if total_post > 0 else 0
@@ -137,14 +127,12 @@ elif menu == "Generate Rapor":
                 total_orders = df_creator['Orders'].sum()
                 total_redemption = df_creator['Redemption amount'].sum()
                 
-                # Baris 1 Penjualan
                 scol1, scol2 = st.columns(2)
                 scol1.metric("Post with Sales", f"{post_with_sales} dari {total_post} Post")
                 scol2.metric("Persentase Sales", f"{persen_sales:.1f}%")
                 
-                st.write("") # Memberi jarak vertikal sedikit
+                st.write("")
                 
-                # Baris 2 Penjualan
                 scol3, scol4, scol5 = st.columns(3)
                 scol3.metric("Total Sales Value", f"Rp{int(total_sales):,}")
                 scol4.metric("Total Orders", f"{int(total_orders):,}")
@@ -152,7 +140,6 @@ elif menu == "Generate Rapor":
 
                 st.divider()
 
-                # 5. PERFORMA CAMPAIGN
                 st.subheader("🎯 Keikutsertaan Campaign (Collaboration Package)")
                 df_campaign = df_creator[df_creator['Task type'].astype(str).str.contains("collaboration package", case=False, na=False)].copy()
                 
@@ -171,7 +158,6 @@ elif menu == "Generate Rapor":
                     st.write("**Detail Post Campaign:**")
                     df_campaign['Post date'] = df_campaign['Post date'].dt.strftime('%Y-%m-%d')
                     
-                    # Style format untuk merapatkan Rp dan koma di tabel detail campaign
                     st.dataframe(
                         df_campaign[['Post date', 'Post title', 'Location name', 'Video views', 'Sales value']].style.format({
                             "Video views": "{:,.0f}",
@@ -183,7 +169,6 @@ elif menu == "Generate Rapor":
 
                 st.divider()
 
-                # 6. RATA-RATA ENGAGEMENT
                 st.subheader("❤️ Rata-rata Engagement")
                 df_eng = df_creator.groupby('Industri Baru')[['Like rate', 'Comment rate']].mean().reset_index()
                 
@@ -196,19 +181,16 @@ elif menu == "Generate Rapor":
                 
                 st.divider()
 
-                # 7. PERFORMA PER BRAND / MERCHANT
                 st.subheader("🏢 Kinerja per Brand / Merchant")
                 
                 def get_clean_brand(row):
                     loc_name = str(row['Location name'])
-                    # Jika Dining dan ada strip, potong teksnya
                     if row['Industri Baru'] == 'Dining' and '-' in loc_name:
                         return loc_name.split('-')[0].strip()
                     return loc_name.strip()
                     
                 df_creator['Brand Bersih'] = df_creator.apply(get_clean_brand, axis=1)
                 
-                # Kolom untuk disortir secara kronologis (YYYY-MM)
                 df_creator['Sort Bulan'] = df_creator['Post date'].dt.strftime('%Y-%m')
                 df_creator['Bulan Post'] = df_creator['Post date'].dt.strftime('%B %Y')
                 
@@ -218,11 +200,9 @@ elif menu == "Generate Rapor":
                     Total_Sales=('Sales value', 'sum')
                 ).reset_index()
                 
-                # Sortir berurutan dari bulan, lalu angka total sales, baru jumlah post
                 df_brand = df_brand.sort_values(by=['Sort Bulan', 'Total_Sales', 'Jumlah_Post'], ascending=[True, False, False])
                 df_brand = df_brand.drop(columns=['Sort Bulan'])
                 
-                # Style format supaya angka bisa disortir dengan benar tapi tetap muncul tulisan Rp di layarnya
                 st.dataframe(
                     df_brand.style.format({
                         "Total_Views": "{:,.0f}",
@@ -231,3 +211,60 @@ elif menu == "Generate Rapor":
                     use_container_width=True, 
                     hide_index=True
                 )
+
+# ==========================================
+# HALAMAN 3: SEGMENTASI CREATOR
+# ==========================================
+elif menu == "Segmentasi Creator":
+    st.header("👥 Segmentasi Creator (Frekuensi Post)")
+    st.write("Unggah file data kolektif video (Contoh: `[JUNE WHOLE MONTH] ContentAnalysis...`) untuk melihat frekuensi dan konsistensi posting bulanan.")
+    
+    raw_file = st.file_uploader("Pilih file Raw Data Video", type=["xlsx"])
+    
+    if raw_file:
+        df_raw = pd.read_excel(raw_file, sheet_name="Data")
+        
+        # Konversi tanggal
+        df_raw['Post date'] = pd.to_datetime(df_raw['Post date'].astype(str), format='%Y%m%d')
+        
+        # Ekstrak tanggal saja tanpa jam untuk menghitung jumlah hari aktif
+        df_raw['Date Only'] = df_raw['Post date'].dt.date
+        
+        # Mengambil jumlah hari maksimum dalam bulan yang ada di dataset
+        days_in_month = df_raw['Post date'].dt.days_in_month.max()
+        
+        # Grouping berdasarkan Creator ID dan Name
+        df_seg = df_raw.groupby(['Creator ID', 'Creator name']).agg(
+            Total_Post=('Post ID', 'count'),
+            Hari_Aktif=('Date Only', 'nunique')
+        ).reset_index()
+        
+        # Fungsi pelabelan frekuensi
+        def label_kategori(total):
+            if total >= 30:
+                return 'Rajin Post'
+            elif 15 <= total <= 29:
+                return 'Sedang'
+            else:
+                return 'Jarang Post'
+                
+        df_seg['Kategori'] = df_seg['Total_Post'].apply(label_kategori)
+        
+        # Fungsi pelabelan konsistensi harian
+        df_seg['Konsisten Full Sebulan'] = df_seg['Hari_Aktif'].apply(lambda x: 'Ya' if x >= days_in_month else 'Tidak')
+        
+        # Urutkan secara bawaan berdasarkan Total Post terbanyak
+        df_seg = df_seg.sort_values(by='Total_Post', ascending=False)
+        
+        st.write("---")
+        
+        col1, col2 = st.columns(2)
+        col1.metric("Total Creator Dianalisis", len(df_seg))
+        col2.metric("Total Konten Keseluruhan", df_seg['Total_Post'].sum())
+        
+        st.write("**Tabel Segmentasi:**")
+        st.dataframe(
+            df_seg[['Creator ID', 'Creator name', 'Total_Post', 'Hari_Aktif', 'Kategori', 'Konsisten Full Sebulan']],
+            use_container_width=True,
+            hide_index=True
+        )
