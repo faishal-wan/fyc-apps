@@ -2,7 +2,7 @@ import streamlit as st
 import pandas as pd
 import os
 
-# Menyuntikkan CSS untuk membuat tampilan setara zoom 80%
+# Menyuntikkan CSS untuk membuat tampilan setara zoom 80% & Mode Cetak PDF
 st.set_page_config(page_title="FYC Creator Rapor", layout="wide")
 st.markdown("""
     <style>
@@ -11,6 +11,12 @@ st.markdown("""
         }
         .stApp {
             zoom: 0.8; 
+        }
+        /* Mode cetak PDF (Ctrl+P) */
+        @media print {
+            .stSidebar { display: none !important; }
+            header { display: none !important; }
+            .stApp { zoom: 1 !important; } /* Kembalikan zoom normal saat dicetak */
         }
     </style>
 """, unsafe_allow_html=True)
@@ -49,7 +55,8 @@ elif menu == "Generate Rapor":
             df_creator = pd.read_excel(creator_file, sheet_name="Data")
             df_master = pd.read_csv("database/master_data.csv")
             
-            df_creator['Post date'] = pd.to_datetime(df_creator['Post date'].astype(str), format='%Y%m%d')
+            # Perbaikan format tanggal campuran agar tidak error
+            df_creator['Post date'] = pd.to_datetime(df_creator['Post date'].astype(str), format='mixed', errors='coerce')
             
             # --- FILTER DATE RANGE ---
             st.write("---")
@@ -119,6 +126,7 @@ elif menu == "Generate Rapor":
                 
                 st.divider()
 
+                # 4. POST WITH SALES (Layout 4 Kolom Baru)
                 st.subheader("🛒 Performa Penjualan (Sales)")
                 post_with_sales = len(df_creator[df_creator['Sales value'] > 0])
                 persen_sales = (post_with_sales / total_post) * 100 if total_post > 0 else 0
@@ -127,16 +135,16 @@ elif menu == "Generate Rapor":
                 total_orders = df_creator['Orders'].sum()
                 total_redemption = df_creator['Redemption amount'].sum()
                 
-                scol1, scol2 = st.columns(2)
-                scol1.metric("Post with Sales", f"{post_with_sales} dari {total_post} Post")
-                scol2.metric("Persentase Sales", f"{persen_sales:.1f}%")
-                
-                st.write("")
-                
-                scol3, scol4, scol5 = st.columns(3)
-                scol3.metric("Total Sales Value", f"Rp{int(total_sales):,}")
-                scol4.metric("Total Orders", f"{int(total_orders):,}")
-                scol5.metric("Total Redemption", f"Rp{int(total_redemption):,}")
+                scol1, scol2, scol3, scol4 = st.columns(4)
+                with scol1:
+                    st.metric("Post with Sales", f"{post_with_sales} dari {total_post} Post")
+                with scol2:
+                    st.metric("Total Sales Value", f"Rp{int(total_sales):,}")
+                with scol3:
+                    st.metric("Total Redemption", f"Rp{int(total_redemption):,}")
+                with scol4:
+                    st.metric("Total Orders", f"{int(total_orders):,}")
+                    st.metric("Persentase Sales", f"{persen_sales:.1f}%")
 
                 st.divider()
 
@@ -224,22 +232,18 @@ elif menu == "Segmentasi Creator":
     if raw_file:
         df_raw = pd.read_excel(raw_file, sheet_name="Data")
         
-        # Konversi tanggal
-        df_raw['Post date'] = pd.to_datetime(df_raw['Post date'].astype(str), format='%Y%m%d')
+        # Perbaikan format tanggal campuran agar tidak error
+        df_raw['Post date'] = pd.to_datetime(df_raw['Post date'].astype(str), format='mixed', errors='coerce')
         
-        # Ekstrak tanggal saja tanpa jam untuk menghitung jumlah hari aktif
         df_raw['Date Only'] = df_raw['Post date'].dt.date
         
-        # Mengambil jumlah hari maksimum dalam bulan yang ada di dataset
         days_in_month = df_raw['Post date'].dt.days_in_month.max()
         
-        # Grouping berdasarkan Creator ID dan Name
         df_seg = df_raw.groupby(['Creator ID', 'Creator name']).agg(
             Total_Post=('Post ID', 'count'),
             Hari_Aktif=('Date Only', 'nunique')
         ).reset_index()
         
-        # Fungsi pelabelan frekuensi
         def label_kategori(total):
             if total >= 30:
                 return 'Rajin Post'
@@ -250,10 +254,8 @@ elif menu == "Segmentasi Creator":
                 
         df_seg['Kategori'] = df_seg['Total_Post'].apply(label_kategori)
         
-        # Fungsi pelabelan konsistensi harian
         df_seg['Konsisten Full Sebulan'] = df_seg['Hari_Aktif'].apply(lambda x: 'Ya' if x >= days_in_month else 'Tidak')
         
-        # Urutkan secara bawaan berdasarkan Total Post terbanyak
         df_seg = df_seg.sort_values(by='Total_Post', ascending=False)
         
         st.write("---")
