@@ -21,7 +21,7 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 # Link Google Sheets Master (HARUS DIISI)
-SHEET_URL = "https://docs.google.com/spreadsheets/d/1LNgd2kx6Q5IfY8MnSHeSPlRuBl3HbHnLh3brWIdcMBE/edit?usp=sharing"
+SHEET_URL = "MASUKKAN_LINK_GOOGLE_SHEETS_DI_SINI"
 
 # Fungsi Koneksi API Google
 @st.cache_resource
@@ -46,7 +46,7 @@ menu = st.sidebar.radio("Navigasi", ["Database Admin", "Generate Rapor", "Segmen
 # ==========================================
 if menu == "Database Admin":
     st.header("⚙️ Update Data Master Creator")
-    st.write("Unggah file Excel Master, sistem akan menyimpannya secara permanen ke Google Sheets.")
+    st.write("Unggah file Excel Master. Sistem akan memperbarui data secara cerdas dan mendeteksi status Rebound/Unbound.")
     
     master_file = st.file_uploader("Pilih file Excel Master", type=["xlsx"])
     
@@ -54,13 +54,71 @@ if menu == "Database Admin":
         if SHEET_URL == "MASUKKAN_LINK_GOOGLE_SHEETS_DI_SINI":
             st.error("Link Google Sheets belum dimasukkan ke dalam kode `app.py`.")
         else:
-            with st.spinner("Mengunggah data ke Google Sheets..."):
-                df_master = pd.read_excel(master_file, sheet_name=0)
+            with st.spinner("Memproses sinkronisasi data ke Google Sheets..."):
+                df_new = pd.read_excel(master_file, sheet_name=0)
+                
+                # Standarisasi ID ke string agar pencocokan akurat
+                df_new['Unique ID'] = df_new['Unique ID'].astype(str).str.strip()
+                
                 client = get_gspread_client()
                 sheet = client.open_by_url(SHEET_URL).sheet1
+                
+                # Ambil data eksisting di Google Sheets jika ada
+                try:
+                    df_existing = get_as_dataframe(sheet, evaluate_formulas=True).dropna(how='all').dropna(axis=1, how='all')
+                    if not df_existing.empty and 'Unique ID' in df_existing.columns:
+                        df_existing['Unique ID'] = df_existing['Unique ID'].astype(str).str.strip()
+                    else:
+                        df_existing = pd.DataFrame()
+                except Exception:
+                    df_existing = pd.DataFrame()
+                
+                if df_existing.empty:
+                    # Jika Sheets kosong, set semua data baru sebagai Aktif
+                    df_new['Status'] = 'Aktif'
+                    df_final = df_new
+                else:
+                    if 'Status' not in df_existing.columns:
+                        df_existing['Status'] = 'Aktif'
+                    
+                    existing_records = df_existing.set_index('Unique ID').to_dict('index')
+                    updated_rows = []
+                    processed_ids = set()
+                    
+                    # Looping data baru untuk cek perubahan periode (Rebound)
+                    for _, row in df_new.iterrows():
+                        uid = row['Unique ID']
+                        new_start = str(row['Collaboration start time']).strip()
+                        
+                        if uid in existing_records:
+                            old_start = str(existing_records[uid]['Collaboration start time']).strip()
+                            old_status = existing_records[uid].get('Status', 'Aktif')
+                            
+                            # Deteksi jika tanggal mulai kolaborasi berubah jadi lebih baru
+                            if new_start != old_start and old_start != 'nan' and new_start != 'nan':
+                                row['Status'] = 'Rebound'
+                            else:
+                                row['Status'] = old_status if old_status in ['Aktif', 'Rebound'] else 'Aktif'
+                        else:
+                            row['Status'] = 'Aktif'
+                        
+                        updated_rows.append(row)
+                        processed_ids.add(uid)
+                    
+                    df_final_new = pd.DataFrame(updated_rows)
+                    
+                    # Pertahankan data lama yang tidak ada di file baru (Ubah status jadi Unbound)
+                    df_unbound = df_existing[~df_existing['Unique ID'].isin(processed_ids)].copy()
+                    if not df_unbound.empty:
+                        df_unbound['Status'] = 'Unbound'
+                        df_final = pd.concat([df_final_new, df_unbound], ignore_index=True)
+                    else:
+                        df_final = df_final_new
+                
+                # Simpan kembali ke Google Sheets
                 sheet.clear()
-                set_with_dataframe(sheet, df_master)
-                st.success("✅ Data Master berhasil diperbarui secara permanen di Google Sheets!")
+                set_with_dataframe(sheet, df_final)
+                st.success("✅ Sinkronisasi berhasil! Data Master diperbarui dan riwayat status tersimpan.")
 
 # ==========================================
 # HALAMAN 2: GENERATE RAPOR CREATOR
@@ -71,7 +129,6 @@ elif menu == "Generate Rapor":
     if SHEET_URL == "MASUKKAN_LINK_GOOGLE_SHEETS_DI_SINI":
         st.warning("⚠️ Masukkan link Google Sheets terlebih dahulu di dalam kode app.py.")
     else:
-        # Menarik Data Master dari Google Sheets
         try:
             client = get_gspread_client()
             sheet = client.open_by_url(SHEET_URL).sheet1
@@ -86,7 +143,6 @@ elif menu == "Generate Rapor":
             
             if creator_file:
                 df_creator = pd.read_excel(creator_file, sheet_name="Data")
-                
                 df_creator['Post date'] = pd.to_datetime(df_creator['Post date'].astype(str), format='mixed', errors='coerce')
                 
                 st.write("---")
@@ -124,11 +180,13 @@ elif menu == "Generate Rapor":
                     c_level = df_creator['Creator level'].iloc[0]
                     c_city = df_creator['Creator city'].iloc[0]
                     
-                    master_match = df_master[df_master['Unique ID'] == c_id]
+                    # Sinkronisasi tipe data untuk pencocokan ID master
+                    master_match = df_master[df_master['Unique ID'].astype(str).str.strip() == str(c_id).strip()]
                     if not master_match.empty:
                         start_str = str(master_match['Collaboration start time'].iloc[0]).split(',')[0]
                         end_str = str(master_match['Collaboration end time'].iloc[0]).split(',')[0]
-                        collab_period = f"{start_str} - {end_str}"
+                        c_status = str(master_match['Status'].iloc[0])
+                        collab_period = f"{start_str} - {end_str} ({c_status})"
                     else:
                         collab_period = "Tidak ditemukan"
                     
@@ -156,7 +214,7 @@ elif menu == "Generate Rapor":
                     
                     st.divider()
 
-                    # 4. POST WITH SALES (Layout 5 Kolom Baru)
+                    # Layout 5 Kolom Horizontal Sesuai Mockup Canva
                     st.subheader("🛒 Performa Penjualan (Sales)")
                     post_with_sales = len(df_creator[df_creator['Sales value'] > 0])
                     persen_sales = (post_with_sales / total_post) * 100 if total_post > 0 else 0
@@ -224,7 +282,6 @@ elif menu == "Generate Rapor":
                         return loc_name.strip()
                         
                     df_creator['Brand Bersih'] = df_creator.apply(get_clean_brand, axis=1)
-                    
                     df_creator['Sort Bulan'] = df_creator['Post date'].dt.strftime('%Y-%m')
                     df_creator['Bulan Post'] = df_creator['Post date'].dt.strftime('%B %Y')
                     
@@ -257,7 +314,6 @@ elif menu == "Segmentasi Creator":
     
     if raw_file:
         df_raw = pd.read_excel(raw_file, sheet_name="Data")
-        
         df_raw['Post date'] = pd.to_datetime(df_raw['Post date'].astype(str), format='mixed', errors='coerce')
         df_raw['Date Only'] = df_raw['Post date'].dt.date
         days_in_month = df_raw['Post date'].dt.days_in_month.max()
