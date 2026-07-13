@@ -185,7 +185,8 @@ elif menu == "Generate Rapor":
                     if not master_match.empty:
                         start_str = str(master_match['Collaboration start time'].iloc[0]).split(',')[0]
                         end_str = str(master_match['Collaboration end time'].iloc[0]).split(',')[0]
-                        c_status = str(master_match['Status'].iloc[0])
+                        # Kasih fallback "Aktif" kalau kolom Status nggak ada
+                        c_status = str(master_match['Status'].iloc[0]) if 'Status' in master_match.columns else "Aktif"
                         collab_period = f"{start_str} - {end_str} ({c_status})"
                     else:
                         collab_period = "Tidak ditemukan"
