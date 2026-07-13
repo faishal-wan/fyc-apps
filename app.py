@@ -256,7 +256,7 @@ elif menu == "Generate Rapor":
                                 "Video views": "{:,.0f}",
                                 "Sales value": "Rp{:,.0f}"
                             }), 
-                            use_container_width=True, 
+                            width="stretch", 
                             hide_index=True
                         )
 
@@ -300,7 +300,7 @@ elif menu == "Generate Rapor":
                             "Total_Views": "{:,.0f}",
                             "Total_Sales": "Rp{:,.0f}"
                         }), 
-                        use_container_width=True, 
+                        width="stretch", 
                         hide_index=True
                     )
 
@@ -344,6 +344,6 @@ elif menu == "Segmentasi Creator":
         st.write("**Tabel Segmentasi:**")
         st.dataframe(
             df_seg[['Creator ID', 'Creator name', 'Total_Post', 'Hari_Aktif', 'Kategori', 'Konsisten Full Sebulan']],
-            use_container_width=True,
+            width="stretch",
             hide_index=True
         )
