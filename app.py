@@ -21,7 +21,7 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 # Link Google Sheets Master (HARUS DIISI)
-SHEET_URL = "MASUKKAN_LINK_GOOGLE_SHEETS_DI_SINI"
+SHEET_URL = "https://docs.google.com/spreadsheets/d/1LNgd2kx6Q5IfY8MnSHeSPlRuBl3HbHnLh3brWIdcMBE/edit?usp=sharing"
 
 # Fungsi Koneksi API Google
 @st.cache_resource
@@ -51,7 +51,7 @@ if menu == "Database Admin":
     master_file = st.file_uploader("Pilih file Excel Master", type=["xlsx"])
     
     if master_file:
-        if SHEET_URL == "MASUKKAN_LINK_GOOGLE_SHEETS_DI_SINI":
+        if SHEET_URL == "https://docs.google.com/spreadsheets/d/1LNgd2kx6Q5IfY8MnSHeSPlRuBl3HbHnLh3brWIdcMBE/edit?usp=sharing":
             st.error("Link Google Sheets belum dimasukkan ke dalam kode `app.py`.")
         else:
             with st.spinner("Memproses sinkronisasi data ke Google Sheets..."):
